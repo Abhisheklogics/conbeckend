@@ -1,16 +1,20 @@
-import  express from "express";
-import  dotenv  from 'dotenv';
-import  http from "http";
+import express from "express";
+import http from "http";
 import { Server } from "socket.io";
-import cors from "cors";
+import cors from "cors";  
+
 const app = express();
 const server = http.createServer(app);
-dotenv.config({
-    path:'./env'
-})
+
+
+app.use(cors({
+  origin: 'http://localhost:5173', 
+  methods: ["GET", "POST"]
+}));
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL, 
+    origin: 'http://localhost:5173/',  
     methods: ["GET", "POST"]
   }
 });
@@ -18,15 +22,12 @@ const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
-  
   socket.on("send-url", (data) => {
     console.log("Received URL from frontend:", data.url);
-
- 
-    socket.broadcast.emit("receive-url", data.url);
+    socket.broadcast.emit("receive-url", data.url);  
   });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log("Server is running on ");
+server.listen(3000, () => {
+  console.log("Server is running on port 3000");
 });
