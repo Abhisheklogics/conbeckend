@@ -20,36 +20,34 @@ const io = new Server(server, {
   cors: true,
 });
 
-io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
 
-  socket.broadcast.emit("new-user", socket.id);
+const rooms = {};
 
-  socket.on("offer", (data) => {
-    io.to(data.id).emit("offer", { id: socket.id, description: data.description });
-  });
+io.on("connection", socket => {
+    socket.on("join room", roomID => {
+        if (rooms[roomID]) {
+            rooms[roomID].push(socket.id);
+        } else {
+            rooms[roomID] = [socket.id];
+        }
+        const otherUser = rooms[roomID].find(id => id !== socket.id);
+        if (otherUser) {
+            socket.emit("other user", otherUser);
+            socket.to(otherUser).emit("user joined", socket.id);
+        }
+    });
 
-  socket.on("answer", (data) => {
-    io.to(data.id).emit("answer", { id: socket.id, description: data.description });
-  });
+    socket.on("offer", payload => {
+        io.to(payload.target).emit("offer", payload);
+    });
 
-  socket.on("ice-candidate", (data) => {
-    io.to(data.id).emit("ice-candidate", { id: socket.id, candidate: data.candidate });
-  });
+    socket.on("answer", payload => {
+        io.to(payload.target).emit("answer", payload);
+    });
 
-  socket.on("start-screen-sharing", () => {
-    console.log("Screen sharing started by", socket.id);
-  });
-
-  socket.on("stop-screen-sharing", () => {
-    console.log("Screen sharing stopped by", socket.id);
-    socket.broadcast.emit("stop-screen-sharing");
-  });
-
-  socket.on("disconnect", () => {
-    console.log("A user disconnected:", socket.id);
-    socket.broadcast.emit("user-disconnected", socket.id);
-  });
+    socket.on("ice-candidate", incoming => {
+        io.to(incoming.target).emit("ice-candidate", incoming.candidate);
+    });
 });
 
 const PORT = process.env.PORT || 3000;
