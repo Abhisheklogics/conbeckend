@@ -61,7 +61,7 @@ const server = http.createServer(app);
 
 
 app.use(cors({
-  origin: 'https://conexusapp.netlify.app/', 
+  origin: 'http://localhost:5173/', 
   methods: ['GET', 'POST'],
 }));
 
