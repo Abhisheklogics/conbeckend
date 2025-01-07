@@ -61,14 +61,14 @@ const server = http.createServer(app);
 
 
 app.use(cors({
-  origin: process.env.FRONDEND_UR1 || 'http://localhost:5173', 
+  origin: 'https://conexusapp.netlify.app/', 
   methods: ['GET', 'POST'],
 }));
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONDEND_UR1 || 'http://localhost:5173',  
-    methods: ['GET', 'POST'],
+    origin: true  
+   
   },
 });
 
