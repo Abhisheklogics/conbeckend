@@ -77,55 +77,60 @@ const rooms = {};
 io.on('connection', socket => {
   console.log('A user connected: ', socket.id);
 
-
+  // When a user joins a room
   socket.on('join room', roomID => {
     if (rooms[roomID]) {
-      rooms[roomID].push(socket.id);
+      rooms[roomID].push(socket.id);  // Add user to the existing room
     } else {
-      rooms[roomID] = [socket.id];
+      rooms[roomID] = [socket.id];  // Create a new room with the user
     }
 
     console.log(`User ${socket.id} joined room: ${roomID}`);
 
-    const otherUser = rooms[roomID].find(id => id !== socket.id);
-    if (otherUser) {
-      socket.emit('other user', otherUser); 
-      socket.to(otherUser).emit('user joined', socket.id); 
-    }
+    // Notify all users in the room
+    const usersInRoom = rooms[roomID];
+    usersInRoom.forEach(userId => {
+      if (userId !== socket.id) {
+        socket.emit('user joined', userId);  // Notify the new user
+        socket.to(userId).emit('user joined', socket.id);  // Notify others about the new user
+      }
+    });
   });
 
+  // Handle offer
   socket.on('offer', payload => {
     console.log('Sending offer to', payload.target);
-    io.to(payload.target).emit('offer', payload);
+    io.to(payload.target).emit('offer', payload);  // Send offer to target user
   });
 
-  
+  // Handle answer
   socket.on('answer', payload => {
     console.log('Sending answer to', payload.target);
-    io.to(payload.target).emit('answer', payload);
+    io.to(payload.target).emit('answer', payload);  // Send answer to target user
   });
 
- 
+  // Handle ICE candidate
   socket.on('ice-candidate', incoming => {
     console.log('Sending ICE candidate to', incoming.target);
-    io.to(incoming.target).emit('ice-candidate', incoming.candidate);
+    io.to(incoming.target).emit('ice-candidate', incoming.candidate);  // Send ICE candidate to target user
   });
 
-  
+  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected: ', socket.id);
-
-    
     for (let roomID in rooms) {
       const index = rooms[roomID].indexOf(socket.id);
       if (index !== -1) {
-        rooms[roomID].splice(index, 1); 
-        const otherUser = rooms[roomID][0]; 
-        if (otherUser) {
-          socket.to(otherUser).emit('user left', socket.id); 
-        }
-        if (rooms[roomID].length === 0) {
-          delete rooms[roomID]; 
+        rooms[roomID].splice(index, 1);  // Remove the user from the room
+        const remainingUsers = rooms[roomID];
+        
+        // Notify remaining users in the room
+        remainingUsers.forEach(userId => {
+          socket.to(userId).emit('user left', socket.id);  // Notify others
+        });
+
+        if (remainingUsers.length === 0) {
+          delete rooms[roomID];  // Clean up if no users are left in the room
         }
         break;
       }
