@@ -59,16 +59,15 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-
+// Enable CORS to allow frontend connections
 app.use(cors({
-  origin: 'https://conexusapp.netlify.app/', 
+  origin: 'https://conexusapp.netlify.app/',
   methods: ['GET', 'POST'],
 }));
 
 const io = new Server(server, {
   cors: {
-    origin: true  
-   
+    origin: true
   },
 });
 
@@ -77,7 +76,7 @@ const rooms = {};
 io.on('connection', socket => {
   console.log('A user connected: ', socket.id);
 
-
+  // When a user joins a room
   socket.on('join room', roomID => {
     if (rooms[roomID]) {
       rooms[roomID].push(socket.id);
@@ -87,45 +86,49 @@ io.on('connection', socket => {
 
     console.log(`User ${socket.id} joined room: ${roomID}`);
 
-    const otherUser = rooms[roomID].find(id => id !== socket.id);
-    if (otherUser) {
-      socket.emit('other user', otherUser); 
-      socket.to(otherUser).emit('user joined', socket.id); 
-    }
+    // Notify all other users in the room
+    const otherUsers = rooms[roomID].filter(id => id !== socket.id);
+    otherUsers.forEach(otherUser => {
+      socket.emit('other user', otherUser);  // Send 'other user' event to the new user
+      socket.to(otherUser).emit('user joined', socket.id);  // Notify the other users
+    });
   });
 
+  // Handle offer from a user to another user
   socket.on('offer', payload => {
     console.log('Sending offer to', payload.target);
     io.to(payload.target).emit('offer', payload);
   });
 
-  
+  // Handle answer from a user
   socket.on('answer', payload => {
     console.log('Sending answer to', payload.target);
     io.to(payload.target).emit('answer', payload);
   });
 
- 
+  // Handle ICE candidates from users
   socket.on('ice-candidate', incoming => {
     console.log('Sending ICE candidate to', incoming.target);
     io.to(incoming.target).emit('ice-candidate', incoming.candidate);
   });
 
-  
+  // Handle user disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected: ', socket.id);
 
-    
+    // Remove the user from the room
     for (let roomID in rooms) {
       const index = rooms[roomID].indexOf(socket.id);
       if (index !== -1) {
-        rooms[roomID].splice(index, 1); 
-        const otherUser = rooms[roomID][0]; 
-        if (otherUser) {
-          socket.to(otherUser).emit('user left', socket.id); 
-        }
+        rooms[roomID].splice(index, 1); // Remove the user from the room
+        const otherUsers = rooms[roomID]; // Get remaining users in the room
+        otherUsers.forEach(user => {
+          socket.to(user).emit('user left', socket.id); // Notify other users that someone left
+        });
+
+        // If the room is empty, delete it
         if (rooms[roomID].length === 0) {
-          delete rooms[roomID]; 
+          delete rooms[roomID];
         }
         break;
       }
