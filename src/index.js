@@ -66,10 +66,7 @@ app.use(cors({
 }));
 
 const io = new Server(server, {
-  cors: {
-    origin: 'https://conexusapp.netlify.app/' 
-   
-  },
+  cors: true
 });
 
 const rooms = {};
