@@ -67,7 +67,7 @@ app.use(cors({
 
 const io = new Server(server, {
   cors: {
-    origin: true  
+    origin: 'https://conexusapp.netlify.app/' 
    
   },
 });
