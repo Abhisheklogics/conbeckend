@@ -49,81 +49,87 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });*/
+import fs from 'fs';
+import https from 'https';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-const app = express();
 dotenv.config({
   path: '.env'
 });
-const server = http.createServer(app);
+
+const app = express();
+
+// Production setup for HTTPS (Only in production environment)
+let server;
+
+  server = http.createServer(app);
+
+
 const io = new Server(server, {
-  cors: true
+  cors: {
+    origin: process.env.FRONTEND_URL, // Use environment variable to store the frontend URL
+    methods: ['GET', 'POST']
+  }
 });
 
-const rooms = {}; // Store users in rooms
-
 app.use(cors({
-  origin: 'https://conexusapp.netlify.app/',
+  origin: process.env.FRONTEND_URL, // Use environment variable to store the frontend URL
   methods: ['GET', 'POST']
 }));
 
-io.on("connection", socket => {
+const rooms = {}; // Store users in rooms
+
+io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on("join room", roomID => {
-    // Check if room exists and if it has less than 2 users
+  socket.on('join room', (roomID) => {
     if (rooms[roomID]) {
       if (rooms[roomID].length < 2) {
         rooms[roomID].push(socket.id);
       } else {
-        socket.emit("room full", "Room is full. Only two users can join.");
+        socket.emit('room full', 'Room is full. Only two users can join.');
         return;
       }
     } else {
       rooms[roomID] = [socket.id];
     }
 
-    const otherUser = rooms[roomID].find(id => id !== socket.id);
+    const otherUser = rooms[roomID].find((id) => id !== socket.id);
     if (otherUser) {
-      socket.emit("other user", otherUser);
-      socket.to(otherUser).emit("user joined", socket.id);
+      socket.emit('other user', otherUser);
+      socket.to(otherUser).emit('user joined', socket.id);
     }
   });
 
-  // Handle offer from a user
-  socket.on("offer", payload => {
-    io.to(payload.target).emit("offer", payload);
+  socket.on('offer', (payload) => {
+    io.to(payload.target).emit('offer', payload);
   });
 
-  // Handle answer from a user
-  socket.on("answer", payload => {
-    io.to(payload.target).emit("answer", payload);
+  socket.on('answer', (payload) => {
+    io.to(payload.target).emit('answer', payload);
   });
 
-  // Handle ICE candidate from a user
-  socket.on("ice-candidate", incoming => {
-    io.to(incoming.target).emit("ice-candidate", incoming.candidate);
+  socket.on('ice-candidate', (incoming) => {
+    io.to(incoming.target).emit('ice-candidate', incoming.candidate);
   });
 
-  // Handle user disconnecting
-  socket.on("disconnect", () => {
+  socket.on('disconnect', () => {
     for (const roomID in rooms) {
       const index = rooms[roomID].indexOf(socket.id);
       if (index !== -1) {
-        rooms[roomID].splice(index, 1); // Remove user from room
+        rooms[roomID].splice(index, 1);
         console.log(`User ${socket.id} disconnected from room: ${roomID}`);
 
         if (rooms[roomID].length === 0) {
-          delete rooms[roomID]; // Cleanup the room if no users are left
+          delete rooms[roomID];
           console.log(`Room ${roomID} is now empty and removed`);
         } else {
-          // Notify the other user that someone left the room
           const remainingUser = rooms[roomID][0];
-          socket.to(remainingUser).emit("user left", socket.id);
+          socket.to(remainingUser).emit('user left', socket.id);
         }
         break;
       }
@@ -131,5 +137,5 @@ io.on("connection", socket => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+const port = process.env.PORT || 3000;
+server.listen(port, () => console.log(`Server is running on port ${port}`));
