@@ -69,13 +69,13 @@ server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL, // Use environment variable to store the frontend URL
+    origin: 'https://conexusapp.netlify.app/', // Use environment variable to store the frontend URL
     methods: ['GET', 'POST']
   }
 });
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // Use environment variable to store the frontend URL
+  origin: 'https://conexusapp.netlify.app/', // Use environment variable to store the frontend URL
   methods: ['GET', 'POST']
 }));
 
