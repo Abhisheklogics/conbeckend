@@ -68,25 +68,33 @@ const rooms = {}; // Store users in rooms
 
 app.use(cors({
   origin: 'https://conexusapp.netlify.app/',
-    methods: ['GET', 'POST'] 
+  methods: ['GET', 'POST']
 }));
 
 io.on("connection", socket => {
   console.log(`User connected: ${socket.id}`);
 
   socket.on("join room", roomID => {
+    // Check if room exists and if it has less than 2 users
     if (rooms[roomID]) {
-      rooms[roomID].push(socket.id);
+      if (rooms[roomID].length < 2) {
+        rooms[roomID].push(socket.id);
+      } else {
+        socket.emit("room full", "Room is full. Only two users can join.");
+        return;
+      }
     } else {
       rooms[roomID] = [socket.id];
     }
+
     const otherUser = rooms[roomID].find(id => id !== socket.id);
     if (otherUser) {
       socket.emit("other user", otherUser);
       socket.to(otherUser).emit("user joined", socket.id);
     }
   });
-    // Handle offer from a user
+
+  // Handle offer from a user
   socket.on("offer", payload => {
     io.to(payload.target).emit("offer", payload);
   });
