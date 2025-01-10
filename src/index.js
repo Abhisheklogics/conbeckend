@@ -69,7 +69,9 @@ const io = new Server(server, {
 
 const rooms = {}; // Store users in rooms
 
-app.use(cors());
+app.use(cors({
+  origin: 'https://conexusapp.netlify.app/', // No trailing slash here
+}));
 
 io.on("connection", socket => {
   console.log(`User connected: ${socket.id}`);
