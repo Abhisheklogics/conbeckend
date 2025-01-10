@@ -61,16 +61,14 @@ dotenv.config({
 });
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: 'https://conexusapp.netlify.app/', // No trailing slash here
-    methods: ['GET', 'POST']
-  }
+  cors: true
 });
 
 const rooms = {}; // Store users in rooms
 
 app.use(cors({
-  origin: 'https://conexusapp.netlify.app/', // No trailing slash here
+  origin: 'https://conexusapp.netlify.app/',
+    methods: ['GET', 'POST'] 
 }));
 
 io.on("connection", socket => {
