@@ -15,10 +15,7 @@ app.use(cors({
 }))
 const server = createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: 'https://portfolo-eight.vercel.app/',
-        methods: ['GET', 'POST']
-    }
+    cors: true
 });
 
 const users = {}; 
