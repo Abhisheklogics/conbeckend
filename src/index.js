@@ -10,7 +10,7 @@ const app = express();
 const server = createServer(app);
 app.use(cors({
     cors: {
-        origin: 'https://portfolo-eight.vercel.app/',
+        origin: 'https://conexus-6asm.vercel.app/',
         methods: ['GET', 'POST']
     }
 }))
