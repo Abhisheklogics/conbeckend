@@ -47,18 +47,25 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         for (const roomId in rooms) {
+            // Remove user from the room's user list
             rooms[roomId].users = rooms[roomId].users.filter(id => id !== socket.id);
+
+            // If the user was sharing their screen, stop screen sharing
             if (rooms[roomId].screenSharing === socket.id) {
                 rooms[roomId].screenSharing = null;
                 io.to(roomId).emit('screen-share-stopped');
             }
+
+            // Emit the user-disconnected event to the remaining users in the room
+            socket.broadcast.to(roomId).emit('user-disconnected', { peerId: socket.id });
+
+            // If the room has no users left, delete the room
             if (rooms[roomId].users.length === 0) {
                 delete rooms[roomId];
             }
         }
     });
 });
-
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
