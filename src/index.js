@@ -8,7 +8,7 @@ dotenv.config();
 const app = express();
 const server = createServer(app);
 app.use(cors({
-    origin: 'https://conexus-6asm.vercel.app/', // Replace with your frontend URL
+    origin: 'https://conexus-6asm.vercel.app/', 
     methods: ['GET', 'POST'],
 }));
 
