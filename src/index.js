@@ -4,67 +4,80 @@ import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import cors from 'cors';
 
-dotenv.config();
 const app = express();
-const server = createServer(app);
+dotenv.config();
+
 app.use(cors({
-    origin: 'https://conexus-6asm.vercel.app/', 
-    methods: ['GET', 'POST'],
+  origin: ['https://conexus-6asm.vercel.app/'],  // Make sure this matches your frontend URL
+  methods: ['GET', 'POST'],
+  credentials: true,
 }));
 
+const server = createServer(app);
 const io = new Server(server, {
-    cors: true,
+  cors: true
 });
 
-const rooms = {}; 
+const rooms = {};  // Object to hold room data
 
+// Handle incoming socket connections
 io.on('connection', (socket) => {
-    console.log("User connected:", socket.id);
+  console.log('A user connected:', socket.id);
 
-    socket.on('join-room', ({ roomId, peerId, email }) => {
-        if (!rooms[roomId]) {
-            rooms[roomId] = { users: [], screenSharing: null };
-        }
-        rooms[roomId].users.push({ peerId, email });
-        socket.join(roomId);
-        socket.emit('receive-existing-users', {
-            peerId, 
-            existingUsers: rooms[roomId].users.filter(user => user.peerId !== peerId)
-        });
-        socket.broadcast.to(roomId).emit('user-connected', { peerId, email });
-    });
+  // Handle join-room event
+  socket.on('join-room', ({ roomId, peerId, email }) => {
+    // Create the room if it doesn't exist
+    if (!rooms[roomId]) rooms[roomId] = [];
 
-    socket.on('screen-share-started', ({ roomId, peerId }) => {
-        if (!rooms[roomId]?.screenSharing) {
-            rooms[roomId].screenSharing = peerId;
-            io.to(roomId).emit('screen-share-started', { peerId });
-        }
-    });
+    // Add the user to the room
+    rooms[roomId].push({ socketId: socket.id, peerId, email });
 
-    socket.on('screen-share-stopped', ({ roomId }) => {
-        rooms[roomId].screenSharing = null;
-        io.to(roomId).emit('screen-share-stopped');
-    });
+    socket.join(roomId);  // Join the socket to the room
 
-    socket.on('disconnect', () => {
-        for (const roomId in rooms) {
-            rooms[roomId].users = rooms[roomId].users.filter(user => user.peerId !== socket.id);
+    // Notify other users that a new user has connected
+    socket.to(roomId).emit('user-connected', { peerId, email });
 
-            if (rooms[roomId].screenSharing === socket.id) {
-                rooms[roomId].screenSharing = null;
-                io.to(roomId).emit('screen-share-stopped');
-            }
+    // Send existing users in the room to the new user
+    const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
+    socket.emit('receive-existing-users', { existingUsers });
 
-            socket.broadcast.to(roomId).emit('user-disconnected', { peerId: socket.id });
+    // Store user info in the socket for later use
+    socket.roomId = roomId;
+    socket.peerId = peerId;
+    socket.email = email;
 
-            if (rooms[roomId].users.length === 0) {
-                delete rooms[roomId];
-            }
-        }
-    });
+    console.log(`${email} joined room ${roomId}`);
+  });
+
+  // Handle leave-room event
+  socket.on('leave-room', ({ roomId, peerId }) => {
+    if (rooms[roomId]) {
+      // Remove the user from the room's list of users
+      rooms[roomId] = rooms[roomId].filter((user) => user.peerId !== peerId);
+
+      // Notify other users that the user has left
+      socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
+    }
+    socket.leave(roomId);
+    console.log(`${socket.email} left room ${roomId}`);
+  });
+
+  // Handle disconnection event
+  socket.on('disconnect', () => {
+    const { roomId, peerId, email } = socket;
+
+    if (roomId && rooms[roomId]) {
+      // Remove the user from the room's list
+      rooms[roomId] = rooms[roomId].filter((user) => user.peerId !== peerId);
+
+      // Notify other users that this user has disconnected
+      socket.to(roomId).emit('user-disconnected', { peerId, email });
+    }
+    console.log(`${email || 'A user'} disconnected.`);
+  });
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
