@@ -8,7 +8,7 @@ const app = express();
 dotenv.config();
 
 app.use(cors({
-  origin: ['https://conexus-6asm.vercel.app/'],  // Make sure this matches your frontend URL
+  origin: ['https://conexus-6asm.vercel.app/'],  
   methods: ['GET', 'POST'],
   credentials: true,
 }));
@@ -18,30 +18,22 @@ const io = new Server(server, {
   cors: true
 });
 
-const rooms = {};  // Object to hold room data
+const rooms = {};  // Store rooms and their users
 
-// Handle incoming socket connections
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
-  // Handle join-room event
+  // User joins room
   socket.on('join-room', ({ roomId, peerId, email }) => {
-    // Create the room if it doesn't exist
     if (!rooms[roomId]) rooms[roomId] = [];
-
-    // Add the user to the room
     rooms[roomId].push({ socketId: socket.id, peerId, email });
 
-    socket.join(roomId);  // Join the socket to the room
-
-    // Notify other users that a new user has connected
+    socket.join(roomId);
     socket.to(roomId).emit('user-connected', { peerId, email });
 
-    // Send existing users in the room to the new user
     const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
     socket.emit('receive-existing-users', { existingUsers });
 
-    // Store user info in the socket for later use
     socket.roomId = roomId;
     socket.peerId = peerId;
     socket.email = email;
@@ -49,28 +41,31 @@ io.on('connection', (socket) => {
     console.log(`${email} joined room ${roomId}`);
   });
 
-  // Handle leave-room event
+  // User leaves room
   socket.on('leave-room', ({ roomId, peerId }) => {
     if (rooms[roomId]) {
-      // Remove the user from the room's list of users
       rooms[roomId] = rooms[roomId].filter((user) => user.peerId !== peerId);
-
-      // Notify other users that the user has left
       socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
     }
     socket.leave(roomId);
     console.log(`${socket.email} left room ${roomId}`);
   });
 
-  // Handle disconnection event
+  // Handle screen share events
+  socket.on('screen-share-started', ({ roomId, peerId, stream }) => {
+    socket.to(roomId).emit('screen-share-update', { peerId, stream });
+  });
+
+  socket.on('screen-share-stopped', ({ roomId, peerId }) => {
+    socket.to(roomId).emit('screen-share-update', { peerId, stream: null });
+  });
+
+  // User disconnects
   socket.on('disconnect', () => {
     const { roomId, peerId, email } = socket;
 
     if (roomId && rooms[roomId]) {
-      // Remove the user from the room's list
       rooms[roomId] = rooms[roomId].filter((user) => user.peerId !== peerId);
-
-      // Notify other users that this user has disconnected
       socket.to(roomId).emit('user-disconnected', { peerId, email });
     }
     console.log(`${email || 'A user'} disconnected.`);
