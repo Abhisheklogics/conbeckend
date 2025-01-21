@@ -16,8 +16,8 @@ app.use(cors({
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // { roomId: [{ socketId, peerId, email }] }
-const activeScreenSharers = {}; // { roomId: peerId }
+const rooms = {}; 
+const activeScreenSharers = {}; 
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -46,24 +46,26 @@ io.on('connection', (socket) => {
         console.log(`${email} joined room ${roomId}`);
     });
 
-    socket.on('screen-share-started', ({ roomId, peerId }) => {
-        if (!activeScreenSharers[roomId]) {
-            activeScreenSharers[roomId] = peerId;
-            io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
-            console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
-        } else {
-            socket.emit('error-message', { message: 'Screen sharing is already active!' });
-        }
-    });
-
-    socket.on('screen-share-stopped', ({ roomId, peerId }) => {
-        if (activeScreenSharers[roomId] === peerId) {
-            delete activeScreenSharers[roomId];
-            io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
-            console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
-        }
-    });
-
+   // When a user starts screen sharing
+socket.on('screen-share-started', ({ roomId, peerId }) => {
+    if (!activeScreenSharers[roomId]) {
+      activeScreenSharers[roomId] = peerId;
+      io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
+      console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
+    } else {
+      socket.emit('error-message', { message: 'Screen sharing is already active!' });
+    }
+  });
+  
+  // When a user stops screen sharing
+  socket.on('screen-share-stopped', ({ roomId, peerId }) => {
+    if (activeScreenSharers[roomId] === peerId) {
+      delete activeScreenSharers[roomId];
+      io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
+      console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
+    }
+  });
+  
     socket.on('disconnect', () => {
         const { roomId, peerId, email } = socket;
 
