@@ -46,44 +46,37 @@ io.on('connection', (socket) => {
         console.log(`${email} joined room ${roomId}`);
     });
 
-   // When a user starts screen sharing
-socket.on('screen-share-started', ({ roomId, peerId }) => {
-    if (!activeScreenSharers[roomId]) {
-      activeScreenSharers[roomId] = peerId;
-      io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
-      console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
-    } else {
-      socket.emit('error-message', { message: 'Screen sharing is already active!' });
-    }
-  });
-  
-  // When a user stops screen sharing
-  socket.on('screen-share-stopped', ({ roomId, peerId }) => {
-    if (activeScreenSharers[roomId] === peerId) {
-      delete activeScreenSharers[roomId];
-      io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
-      console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
-    }
-  });
-  
-    socket.on('disconnect', () => {
-        const { roomId, peerId, email } = socket;
-
-        if (roomId && rooms[roomId]) {
-            rooms[roomId] = rooms[roomId].filter((user) => user.peerId !== peerId);
-            socket.to(roomId).emit('user-disconnected', { peerId, email });
+    socket.on('screen-share-started', ({ roomId, peerId }) => {
+        if (!activeScreenSharers[roomId]) {
+            activeScreenSharers[roomId] = peerId;
+            io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
+            console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
+        } else {
+            socket.emit('error-message', { message: 'Screen sharing is already active!' });
         }
+    });
 
-        if (roomId && activeScreenSharers[roomId] === peerId) {
+    socket.on('screen-share-stopped', ({ roomId, peerId }) => {
+        if (activeScreenSharers[roomId] === peerId) {
             delete activeScreenSharers[roomId];
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
+            console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
         }
+    });
 
-        console.log(`${email || 'A user'} disconnected.`);
+    socket.on('leave-room', ({ roomId, peerId }) => {
+        if (rooms[roomId]) {
+            rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
+            socket.leave(roomId);
+            socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+server.listen(process.env.PORT, () => {
+    console.log(`Server is running on port ${process.env.PORT}`);
 });
