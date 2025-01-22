@@ -7,7 +7,7 @@ import cors from 'cors';
 dotenv.config();
 const app = express();
 
-// Middleware for CORS
+
 app.use(
   cors({
     origin: ['https://conexus-6asm.vercel.app/'],
@@ -19,9 +19,9 @@ app.use(
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-// Data structures for managing rooms and screen sharers
-const rooms = new Map(); // roomId -> [{ socketId, peerId, email }]
-const activeScreenSharers = new Map(); // roomId -> peerId
+
+const rooms = new Map(); 
+const activeScreenSharers = new Map(); 
 
 // Socket.IO connection
 io.on('connection', (socket) => {
