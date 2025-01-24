@@ -1,4 +1,3 @@
-// Backend
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -9,16 +8,16 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: ['https://conexus-6asm.vercel.app/'],
+  origin: ['https://conexus-6asm.vercel.app/'], // Your frontend URL
   methods: ['GET', 'POST'],
   credentials: true,
 }));
 
 const server = createServer(app);
-const io = new Server(server, { cors: true });
+const io = new Server(server, { cors: { origin: ['https://conexus-6asm.vercel.app/'] } });
 
-const rooms = {}; // Store room details: { roomId: [{ socketId, email, role }] }
-const activeScreenSharers = {}; // Track active screen sharers per room: { roomId: email }
+const rooms = {}; // Room details: { roomId: [{ socketId, email, role }] }
+const activeScreenSharers = {}; // Active screen sharer per room: { roomId: email }
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -27,13 +26,18 @@ io.on('connection', (socket) => {
   socket.on('create-room', ({ email }, callback) => {
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     rooms[roomId] = [{ socketId: socket.id, email, role: 'master' }];
+    socket.join(roomId);
     callback({ success: true, roomId });
     console.log(`Room ${roomId} created by ${email}`);
   });
 
   // Join an existing room
   socket.on('join-room', ({ roomId, email }) => {
-    if (!rooms[roomId]) rooms[roomId] = [];
+    if (!rooms[roomId]) {
+      socket.emit('error-message', { message: 'Room does not exist!' });
+      return;
+    }
+
     const isMaster = rooms[roomId].some(user => user.role === 'master');
 
     if (!isMaster) {
@@ -44,7 +48,6 @@ io.on('connection', (socket) => {
     rooms[roomId].push({ socketId: socket.id, email, role: 'slave' });
     socket.join(roomId);
     io.to(roomId).emit('user-list-update', rooms[roomId]);
-
     console.log(`${email} joined room ${roomId}`);
   });
 
@@ -73,10 +76,12 @@ io.on('connection', (socket) => {
   socket.on('leave-room', ({ roomId, email }) => {
     if (rooms[roomId]) {
       rooms[roomId] = rooms[roomId].filter(user => user.email !== email);
+
       if (rooms[roomId].length === 0) {
         delete rooms[roomId];
+        delete activeScreenSharers[roomId];
       }
-      delete activeScreenSharers[roomId];
+
       io.to(roomId).emit('user-list-update', rooms[roomId]);
       console.log(`${email} left room ${roomId}`);
     }
@@ -87,10 +92,12 @@ io.on('connection', (socket) => {
     console.log('User disconnected:', socket.id);
     for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(user => user.socketId !== socket.id);
+
       if (rooms[roomId].length === 0) {
         delete rooms[roomId];
+        delete activeScreenSharers[roomId];
       }
-      delete activeScreenSharers[roomId];
+
       io.to(roomId).emit('user-list-update', rooms[roomId]);
     }
   });
