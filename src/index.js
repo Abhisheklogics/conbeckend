@@ -1,3 +1,4 @@
+// Backend
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -16,8 +17,8 @@ app.use(cors({
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // Store room details: { roomId: [{ socketId, peerId, email }] }
-const activeScreenSharers = {}; // Track active screen sharers per room: { roomId: peerId }
+const rooms = {}; // Store room details: { roomId: [{ socketId, email, role }] }
+const activeScreenSharers = {}; // Track active screen sharers per room: { roomId: email }
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -25,77 +26,72 @@ io.on('connection', (socket) => {
   // Create a new room
   socket.on('create-room', ({ email }, callback) => {
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    rooms[roomId] = [{ socketId: socket.id, email }];
+    rooms[roomId] = [{ socketId: socket.id, email, role: 'master' }];
     callback({ success: true, roomId });
     console.log(`Room ${roomId} created by ${email}`);
   });
 
   // Join an existing room
-  socket.on('join-room', ({ roomId, peerId, email }) => {
+  socket.on('join-room', ({ roomId, email }) => {
     if (!rooms[roomId]) rooms[roomId] = [];
-    rooms[roomId].push({ socketId: socket.id, peerId, email });
+    const isMaster = rooms[roomId].some(user => user.role === 'master');
 
+    if (!isMaster) {
+      socket.emit('error-message', { message: 'No master present in the room!' });
+      return;
+    }
+
+    rooms[roomId].push({ socketId: socket.id, email, role: 'slave' });
     socket.join(roomId);
-    socket.to(roomId).emit('user-connected', { peerId, email });
-
-    const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
-    socket.emit('receive-existing-users', { existingUsers });
-
-    socket.roomId = roomId;
-    socket.peerId = peerId;
-    socket.email = email;
+    io.to(roomId).emit('user-list-update', rooms[roomId]);
 
     console.log(`${email} joined room ${roomId}`);
   });
 
   // Start screen sharing
-  socket.on('screen-share-started', ({ roomId, peerId }) => {
-    if (!activeScreenSharers[roomId]) {
-      activeScreenSharers[roomId] = peerId;
-      io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
-      console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
+  socket.on('screen-share-started', ({ roomId, email }) => {
+    const master = rooms[roomId]?.find(user => user.role === 'master');
+    if (master && master.email === email) {
+      activeScreenSharers[roomId] = email;
+      io.to(roomId).emit('screen-share-update', { email, isSharing: true });
+      console.log(`Screen sharing started by master (${email}) in room ${roomId}`);
     } else {
-      socket.emit('error-message', { message: 'Screen sharing is already active!' });
+      socket.emit('error-message', { message: 'Only the master can share the screen!' });
     }
   });
 
   // Stop screen sharing
-  socket.on('screen-share-stopped', ({ roomId, peerId }) => {
-    if (activeScreenSharers[roomId] === peerId) {
+  socket.on('screen-share-stopped', ({ roomId, email }) => {
+    if (activeScreenSharers[roomId] === email) {
       delete activeScreenSharers[roomId];
-      io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
-      console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
+      io.to(roomId).emit('screen-share-update', { email, isSharing: false });
+      console.log(`Screen sharing stopped by master (${email}) in room ${roomId}`);
     }
   });
 
   // Leave room
-  socket.on('leave-room', ({ roomId, peerId }) => {
+  socket.on('leave-room', ({ roomId, email }) => {
     if (rooms[roomId]) {
-      rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
-      if (activeScreenSharers[roomId] === peerId) {
-        delete activeScreenSharers[roomId];
-        io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
+      rooms[roomId] = rooms[roomId].filter(user => user.email !== email);
+      if (rooms[roomId].length === 0) {
+        delete rooms[roomId];
       }
-      socket.leave(roomId);
-      socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
+      delete activeScreenSharers[roomId];
+      io.to(roomId).emit('user-list-update', rooms[roomId]);
+      console.log(`${email} left room ${roomId}`);
     }
   });
 
   // Handle user disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    const roomId = socket.roomId;
-    const peerId = socket.peerId;
-
-    if (roomId && rooms[roomId]) {
+    for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(user => user.socketId !== socket.id);
-
-      if (activeScreenSharers[roomId] === peerId) {
-        delete activeScreenSharers[roomId];
-        io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
+      if (rooms[roomId].length === 0) {
+        delete rooms[roomId];
       }
-
-      socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
+      delete activeScreenSharers[roomId];
+      io.to(roomId).emit('user-list-update', rooms[roomId]);
     }
   });
 });
