@@ -17,7 +17,7 @@ const server = createServer(app);
 const io = new Server(server, { cors: { origin: ['https://conexus-6asm.vercel.app/'] } });
 
 const rooms = {}; // Room details: { roomId: [{ socketId, email, role }] }
-const activeScreenSharers = {}; // Active screen sharer per room: { roomId: email }
+const activeScreenSharers = {}; // Active screen sharer per room: { roomId: { email, streamId } }
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -47,16 +47,23 @@ io.on('connection', (socket) => {
 
     rooms[roomId].push({ socketId: socket.id, email, role: 'slave' });
     socket.join(roomId);
+
+    // Notify the new user if screen sharing is active
+    if (activeScreenSharers[roomId]) {
+      const { email: sharerEmail, streamId } = activeScreenSharers[roomId];
+      socket.emit('screen-share-update', { email: sharerEmail, streamId, isSharing: true });
+    }
+
     io.to(roomId).emit('user-list-update', rooms[roomId]);
     console.log(`${email} joined room ${roomId}`);
   });
 
   // Start screen sharing
-  socket.on('screen-share-started', ({ roomId, email }) => {
+  socket.on('screen-share-started', ({ roomId, email, streamId }) => {
     const master = rooms[roomId]?.find(user => user.role === 'master');
     if (master && master.email === email) {
-      activeScreenSharers[roomId] = email;
-      io.to(roomId).emit('screen-share-update', { email, isSharing: true });
+      activeScreenSharers[roomId] = { email, streamId };
+      io.to(roomId).emit('screen-share-update', { email, streamId, isSharing: true });
       console.log(`Screen sharing started by master (${email}) in room ${roomId}`);
     } else {
       socket.emit('error-message', { message: 'Only the master can share the screen!' });
@@ -65,7 +72,7 @@ io.on('connection', (socket) => {
 
   // Stop screen sharing
   socket.on('screen-share-stopped', ({ roomId, email }) => {
-    if (activeScreenSharers[roomId] === email) {
+    if (activeScreenSharers[roomId]?.email === email) {
       delete activeScreenSharers[roomId];
       io.to(roomId).emit('screen-share-update', { email, isSharing: false });
       console.log(`Screen sharing stopped by master (${email}) in room ${roomId}`);
@@ -77,7 +84,8 @@ io.on('connection', (socket) => {
     if (rooms[roomId]) {
       rooms[roomId] = rooms[roomId].filter(user => user.email !== email);
 
-      if (rooms[roomId].length === 0) {
+      // If the master leaves, stop screen sharing and delete the room
+      if (rooms[roomId].length === 0 || rooms[roomId].some(user => user.role === 'master' && user.email === email)) {
         delete rooms[roomId];
         delete activeScreenSharers[roomId];
       }
@@ -91,14 +99,20 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     for (const roomId in rooms) {
-      rooms[roomId] = rooms[roomId].filter(user => user.socketId !== socket.id);
+      const userIndex = rooms[roomId].findIndex(user => user.socketId === socket.id);
 
-      if (rooms[roomId].length === 0) {
-        delete rooms[roomId];
-        delete activeScreenSharers[roomId];
+      if (userIndex !== -1) {
+        const [disconnectedUser] = rooms[roomId].splice(userIndex, 1);
+
+        // If the master disconnects, stop screen sharing and delete the room
+        if (disconnectedUser.role === 'master') {
+          delete rooms[roomId];
+          delete activeScreenSharers[roomId];
+        }
+
+        io.to(roomId).emit('user-list-update', rooms[roomId]);
+        break;
       }
-
-      io.to(roomId).emit('user-list-update', rooms[roomId]);
     }
   });
 });
