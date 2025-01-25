@@ -16,7 +16,7 @@ app.use(
 );
 
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: ["https://conexus-6asm.vercel.app/"] } });
+const io = new Server(server, { cors: true });
 
 const rooms = {}; // { roomId: [{ socketId, email, peerId, role }] }
 const activeScreenSharers = {}; // { roomId: { email, streamId } }
