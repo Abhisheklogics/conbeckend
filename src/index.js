@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 app.use(
   cors({
-    origin: ["https://conexus-6asm.vercel.app/"], // Frontend URL
+    origin: ["https://conexus-6asm.vercel.app/"], // Update as needed
     methods: ["GET", "POST"],
     credentials: true,
   })
@@ -18,85 +18,63 @@ app.use(
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // { roomId: [{ socketId, email, peerId, role }] }
-const activeScreenSharers = {}; // { roomId: { email, streamId } }
+const rooms = {}; // Store rooms with the code
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("create-room", ({ email }, callback) => {
-    const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    rooms[roomId] = [{ socketId: socket.id, email, peerId: null, role: "master" }];
-    socket.join(roomId);
-    callback({ success: true, roomId });
-    console.log(`Room ${roomId} created by ${email}`);
-  });
+  // Master joins the room
+  socket.on("master", (data) => {
+    const { email, code } = data;
 
-  socket.on("join-room", ({ roomId, email, peerId }) => {
-    if (!rooms[roomId]) {
-      socket.emit("error-message", { message: "Room does not exist!" });
-      return;
-    }
-
-    const role = rooms[roomId].length === 0 ? "master" : "slave";
-    rooms[roomId].push({ socketId: socket.id, email, peerId, role });
-    socket.join(roomId);
-
-    if (activeScreenSharers[roomId]) {
-      socket.emit("screen-share-update", { ...activeScreenSharers[roomId], isSharing: true });
-    }
-
-    io.to(roomId).emit("user-list-update", rooms[roomId]);
-    console.log(`${email} joined room ${roomId}`);
-  });
-
-  socket.on("screen-share-started", ({ roomId, email, streamId }) => {
-    const master = rooms[roomId]?.find((user) => user.role === "master");
-    if (master && master.email === email) {
-      activeScreenSharers[roomId] = { email, streamId };
-      io.to(roomId).emit("screen-share-update", { email, streamId, isSharing: true });
-      console.log(`Screen sharing started by ${email} in room ${roomId}`);
+    if (email === "amarjeetsinghchauhan96@gmail.com") {
+      rooms[code] = { master: socket.id, slaves: [] };
+      socket.emit("roomCode", { code });
     }
   });
 
-  socket.on("screen-share-stopped", ({ roomId, email }) => {
-    if (activeScreenSharers[roomId]?.email === email) {
-      delete activeScreenSharers[roomId];
-      io.to(roomId).emit("screen-share-update", { email, isSharing: false });
-      console.log(`Screen sharing stopped by ${email} in room ${roomId}`);
+  // Slave joins the room
+  socket.on("slave", (data) => {
+    const { code } = data;
+
+    if (rooms[code]) {
+      rooms[code].slaves.push(socket.id);
+      socket.emit("validCode", { code });
+
+      io.to(rooms[code].master).emit("updateSlaveCount", rooms[code].slaves.length);
+    } else {
+      socket.emit("invalidCode", { message: "Invalid room code." });
     }
   });
 
-  socket.on("leave-room", ({ roomId }) => {
-    if (rooms[roomId]) {
-      rooms[roomId] = rooms[roomId].filter((user) => user.socketId !== socket.id);
+  // Relay screen stream data to all slaves in the room
+  socket.on("screenStream", (data) => {
+    const { roomCode, streamData } = data;
 
-      if (rooms[roomId].length === 0) {
-        delete rooms[roomId];
-        delete activeScreenSharers[roomId];
-      }
-
-      io.to(roomId).emit("user-list-update", rooms[roomId]);
+    const slaves = rooms[roomCode]?.slaves;
+    if (slaves && slaves.length > 0) {
+      slaves.forEach((slaveId) => {
+        io.to(slaveId).emit("screenStream", { streamData });
+      });
     }
   });
 
+  // Handle disconnection
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-    for (const roomId in rooms) {
-      const index = rooms[roomId].findIndex((user) => user.socketId === socket.id);
-      if (index !== -1) {
-        const [user] = rooms[roomId].splice(index, 1);
-
-        if (user.role === "master") {
-          delete activeScreenSharers[roomId];
-        }
-
-        io.to(roomId).emit("user-list-update", rooms[roomId]);
-        break;
+    Object.keys(rooms).forEach((code) => {
+      rooms[code].slaves = rooms[code].slaves.filter((id) => id !== socket.id);
+      if (rooms[code].master === socket.id) {
+        delete rooms[code];
       }
-    }
+
+      if (rooms[code].master) {
+        io.to(rooms[code].master).emit("updateSlaveCount", rooms[code].slaves.length);
+      }
+    });
+    console.log("User disconnected:", socket.id);
   });
 });
+
 
 server.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);
