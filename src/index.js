@@ -18,57 +18,72 @@ app.use(
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // Track rooms, masters, slaves, and active streams
+const rooms = {}; // Store information about rooms and peer connections
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("master", ({ email, code }) => {
-    if (email === "amarjeetsinghchauhan96@gmail.com") {
-      rooms[code] = { master: socket.id, slaves: [], screenStream: null };
+  // Handle master or slave joining a room
+  socket.on("master", ({ code }) => {
+    if (!rooms[code]) {
+      rooms[code] = { master: socket.id, slaves: [] };
       socket.join(code);
       console.log(`Master joined room: ${code}`);
+    } else {
+      socket.emit("roomExists", { message: "A master already exists for this room." });
     }
   });
 
   socket.on("slave", ({ code }) => {
-    if (rooms[code]) {
-      rooms[code].slaves.push(socket.id);
+    const room = rooms[code];
+    if (room) {
+      room.slaves.push(socket.id);
       socket.join(code);
+      console.log(`Slave joined room: ${code}`);
+      io.to(room.master).emit("updateSlaveCount", room.slaves.length);
 
-      // Notify the master about the updated slave count
-      io.to(rooms[code].master).emit("updateSlaveCount", rooms[code].slaves.length);
-
-      // If a screen stream is already active, send it to the new slave
-      if (rooms[code].screenStream) {
-        socket.emit("screenStream", { streamData: rooms[code].screenStream });
-      }
+      // Notify the master that a new slave is ready
+      io.to(room.master).emit("slaveReady", { slaveId: socket.id });
     } else {
       socket.emit("invalidCode", { message: "Invalid room code." });
     }
   });
 
-  socket.on("screenStream", ({ roomCode, streamData }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].screenStream = streamData; // Save the stream data
-      socket.to(roomCode).emit("screenStream", { streamData }); // Broadcast to all slaves
-    }
+  // Handle master sending an offer to a slave
+  socket.on("offer", ({ offer, to }) => {
+    io.to(to).emit("offer", { offer, from: socket.id });
   });
 
+  // Handle slave sending an answer to the master
+  socket.on("answer", ({ answer, to }) => {
+    io.to(to).emit("answer", { answer, from: socket.id });
+  });
+
+  // Handle ICE candidates between peers
+  socket.on("iceCandidate", ({ candidate, to }) => {
+    io.to(to).emit("iceCandidate", { candidate, from: socket.id });
+  });
+
+  // Handle stopping the screen stream
   socket.on("stopScreen", ({ code }) => {
-    if (rooms[code]) {
-      rooms[code].screenStream = null; // Clear the active screen stream
-      io.to(code).emit("stopScreen"); // Notify all slaves
+    const room = rooms[code];
+    if (room && room.master === socket.id) {
+      io.to(code).emit("stopScreen");
+      console.log(`Screen sharing stopped in room: ${code}`);
     }
   });
 
+  // Handle disconnection of master or slave
   socket.on("disconnect", () => {
     Object.keys(rooms).forEach((code) => {
       const room = rooms[code];
+
       if (room.master === socket.id) {
-        delete rooms[code]; // Delete the room if the master disconnects
-        io.to(code).emit("roomClosed", { message: "The room has been closed." });
-      } else {
+        // Remove the room if the master disconnects
+        io.to(code).emit("roomClosed", { message: "The room has been closed by the master." });
+        delete rooms[code];
+      } else if (room.slaves.includes(socket.id)) {
+        // Remove the slave if it disconnects
         room.slaves = room.slaves.filter((id) => id !== socket.id);
         io.to(room.master).emit("updateSlaveCount", room.slaves.length);
       }
@@ -77,6 +92,6 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
+server.listen(process.env.PORT || 5000, () => {
+  console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
