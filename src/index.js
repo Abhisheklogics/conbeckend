@@ -7,9 +7,11 @@ import cors from "cors";
 dotenv.config();
 
 const app = express();
+
+// Middleware setup
 app.use(
   cors({
-    origin: ["https://conexus-6asm.vercel.app/"], // Update as needed
+    origin: ["https://conexus-6asm.vercel.app/"], // Tumhare frontend ka domain, update karo agar zarurat ho
     methods: ["GET", "POST"],
     credentials: true,
   })
@@ -18,12 +20,14 @@ app.use(
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // Store information about rooms and peer connections
+// In-memory room storage
+const rooms = {};
 
+// Socket.IO connection handling
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Handle master or slave joining a room
+  // Master joins the room
   socket.on("master", ({ code }) => {
     if (!rooms[code]) {
       rooms[code] = { master: socket.id, slaves: [] };
@@ -34,27 +38,30 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Slave joins the room
   socket.on("slave", ({ code }) => {
     const room = rooms[code];
     if (room) {
       room.slaves.push(socket.id);
       socket.join(code);
       console.log(`Slave joined room: ${code}`);
+
+      // Notify master of updated slave count
       io.to(room.master).emit("updateSlaveCount", room.slaves.length);
 
-      // Notify the master that a new slave is ready
+      // Notify the master that the slave is ready
       io.to(room.master).emit("slaveReady", { slaveId: socket.id });
     } else {
       socket.emit("invalidCode", { message: "Invalid room code." });
     }
   });
 
-  // Handle master sending an offer to a slave
+  // Master sends an offer to a slave
   socket.on("offer", ({ offer, to }) => {
     io.to(to).emit("offer", { offer, from: socket.id });
   });
 
-  // Handle slave sending an answer to the master
+  // Slave sends an answer to the master
   socket.on("answer", ({ answer, to }) => {
     io.to(to).emit("answer", { answer, from: socket.id });
   });
@@ -64,7 +71,7 @@ io.on("connection", (socket) => {
     io.to(to).emit("iceCandidate", { candidate, from: socket.id });
   });
 
-  // Handle stopping the screen stream
+  // Master stops screen sharing
   socket.on("stopScreen", ({ code }) => {
     const room = rooms[code];
     if (room && room.master === socket.id) {
@@ -73,25 +80,30 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle disconnection of master or slave
+  // Handle user disconnection
   socket.on("disconnect", () => {
     Object.keys(rooms).forEach((code) => {
       const room = rooms[code];
 
       if (room.master === socket.id) {
-        // Remove the room if the master disconnects
+        // If master disconnects, close the room
         io.to(code).emit("roomClosed", { message: "The room has been closed by the master." });
         delete rooms[code];
+        console.log(`Room closed: ${code}`);
       } else if (room.slaves.includes(socket.id)) {
-        // Remove the slave if it disconnects
+        // If slave disconnects, remove them from the room
         room.slaves = room.slaves.filter((id) => id !== socket.id);
         io.to(room.master).emit("updateSlaveCount", room.slaves.length);
+        console.log(`Slave disconnected from room: ${code}`);
       }
     });
+
     console.log("User disconnected:", socket.id);
   });
 });
 
-server.listen(process.env.PORT || 5000, () => {
-  console.log(`Server running on port ${process.env.PORT || 5000}`);
+// Start server
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
