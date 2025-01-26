@@ -17,7 +17,7 @@ const server = createServer(app);
 const io = new Server(server, { cors: true });
 
 const rooms = {}; 
-const activeScreenSharers = {}; // Modified to store multiple screen sharers
+const activeScreenSharers = {}; 
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -48,19 +48,17 @@ io.on('connection', (socket) => {
 
     socket.on('screen-share-started', ({ roomId, peerId }) => {
         if (!activeScreenSharers[roomId]) {
-            activeScreenSharers[roomId] = [];
-        }
-        // Add peerId to the active sharers list
-        if (!activeScreenSharers[roomId].includes(peerId)) {
-            activeScreenSharers[roomId].push(peerId);
+            activeScreenSharers[roomId] = peerId;
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
             console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
+        } else {
+            socket.emit('error-message', { message: 'Screen sharing is already active!' });
         }
     });
 
     socket.on('screen-share-stopped', ({ roomId, peerId }) => {
-        if (activeScreenSharers[roomId]) {
-            activeScreenSharers[roomId] = activeScreenSharers[roomId].filter(id => id !== peerId);
+        if (activeScreenSharers[roomId] === peerId) {
+            delete activeScreenSharers[roomId];
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
             console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
         }
@@ -71,15 +69,10 @@ io.on('connection', (socket) => {
             rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
             socket.leave(roomId);
             socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
-            console.log(`${socket.email} left room ${roomId}`);
         }
     });
 
     socket.on('disconnect', () => {
-        if (socket.roomId) {
-            rooms[socket.roomId] = rooms[socket.roomId].filter(user => user.socketId !== socket.id);
-            io.to(socket.roomId).emit('user-disconnected', { peerId: socket.peerId, email: socket.email });
-        }
         console.log('User disconnected:', socket.id);
     });
 });
