@@ -16,8 +16,8 @@ app.use(cors({
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; 
-const activeScreenSharers = {}; 
+const activeScreenSharers = {}; // Track who is the master screen sharer
+const rooms = {}; // Rooms to track users in them
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -36,8 +36,14 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.to(roomId).emit('user-connected', { peerId, email });
 
+        // Send existing users to the new user
         const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
         socket.emit('receive-existing-users', { existingUsers });
+
+        // If someone is already screen sharing, inform the new user
+        if (activeScreenSharers[roomId]) {
+            socket.emit('master-screen-sharing', { peerId: activeScreenSharers[roomId] });
+        }
 
         socket.roomId = roomId;
         socket.peerId = peerId;
@@ -47,6 +53,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('screen-share-started', ({ roomId, peerId }) => {
+        // Set the first user who starts sharing as the master
         if (!activeScreenSharers[roomId]) {
             activeScreenSharers[roomId] = peerId;
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
