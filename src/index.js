@@ -7,9 +7,8 @@ import cors from 'cors';
 dotenv.config();
 const app = express();
 
-// Enable CORS for frontend
 app.use(cors({
-    origin: ['https://conexus-6asm.vercel.app/'], // Frontend URL
+    origin: ['https://conexus-6asm.vercel.app/'],
     methods: ['GET', 'POST'],
     credentials: true,
 }));
@@ -17,15 +16,12 @@ app.use(cors({
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-// Room and active screen sharers storage
 const rooms = {}; 
-const activeScreenSharers = {}; 
+const activeScreenSharers = {}; // Modified to store multiple screen sharers
 
-// Socket.io connection event
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Create a room
     socket.on('create-room', ({ email }, callback) => {
         const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
         rooms[roomId] = [{ socketId: socket.id, email }];
@@ -33,7 +29,6 @@ io.on('connection', (socket) => {
         console.log(`Room ${roomId} created by ${email}`);
     });
 
-    // Join an existing room
     socket.on('join-room', ({ roomId, peerId, email }) => {
         if (!rooms[roomId]) rooms[roomId] = [];
         rooms[roomId].push({ socketId: socket.id, peerId, email });
@@ -41,7 +36,6 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.to(roomId).emit('user-connected', { peerId, email });
 
-        // Send existing users list
         const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
         socket.emit('receive-existing-users', { existingUsers });
 
@@ -52,27 +46,26 @@ io.on('connection', (socket) => {
         console.log(`${email} joined room ${roomId}`);
     });
 
-    // Start screen sharing
     socket.on('screen-share-started', ({ roomId, peerId }) => {
         if (!activeScreenSharers[roomId]) {
-            activeScreenSharers[roomId] = peerId;
+            activeScreenSharers[roomId] = [];
+        }
+        // Add peerId to the active sharers list
+        if (!activeScreenSharers[roomId].includes(peerId)) {
+            activeScreenSharers[roomId].push(peerId);
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
             console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
-        } else {
-            socket.emit('error-message', { message: 'Screen sharing is already active!' });
         }
     });
 
-    // Stop screen sharing
     socket.on('screen-share-stopped', ({ roomId, peerId }) => {
-        if (activeScreenSharers[roomId] === peerId) {
-            delete activeScreenSharers[roomId];
+        if (activeScreenSharers[roomId]) {
+            activeScreenSharers[roomId] = activeScreenSharers[roomId].filter(id => id !== peerId);
             io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
             console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
         }
     });
 
-    // User leaves the room
     socket.on('leave-room', ({ roomId, peerId }) => {
         if (rooms[roomId]) {
             rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
@@ -82,7 +75,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // User disconnects
     socket.on('disconnect', () => {
         if (socket.roomId) {
             rooms[socket.roomId] = rooms[socket.roomId].filter(user => user.socketId !== socket.id);
@@ -92,7 +84,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Start the server
 server.listen(process.env.PORT, () => {
     console.log(`Server is running on port ${process.env.PORT}`);
 });
