@@ -18,47 +18,59 @@ app.use(
 const server = createServer(app);
 const io = new Server(server, { cors: true });
 
-const rooms = {}; // Structure: { roomCode: { master: socketId, slaves: [] } }
+const rooms = {}; // Track rooms, masters, slaves, and active streams
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Master joins
   socket.on("master", ({ email, code }) => {
     if (email === "amarjeetsinghchauhan96@gmail.com") {
-      rooms[code] = { master: socket.id, slaves: [] };
-      socket.join(code); // Join master to the room
-      socket.emit("roomCreated", { code });
+      rooms[code] = { master: socket.id, slaves: [], screenStream: null };
+      socket.join(code);
+      console.log(`Master joined room: ${code}`);
     }
   });
 
-  // Slave joins
   socket.on("slave", ({ code }) => {
     if (rooms[code]) {
       rooms[code].slaves.push(socket.id);
-      socket.join(code); // Join slave to the room
-      io.to(code).emit("updateSlaveCount", rooms[code].slaves.length); // Notify master of updated count
+      socket.join(code);
+
+      // Notify the master about the updated slave count
+      io.to(rooms[code].master).emit("updateSlaveCount", rooms[code].slaves.length);
+
+      // If a screen stream is already active, send it to the new slave
+      if (rooms[code].screenStream) {
+        socket.emit("screenStream", { streamData: rooms[code].screenStream });
+      }
     } else {
       socket.emit("invalidCode", { message: "Invalid room code." });
     }
   });
 
-  // Master shares screen stream
   socket.on("screenStream", ({ roomCode, streamData }) => {
-    io.to(roomCode).emit("screenStream", { streamData }); // Broadcast to all slaves
+    if (rooms[roomCode]) {
+      rooms[roomCode].screenStream = streamData; // Save the stream data
+      socket.to(roomCode).emit("screenStream", { streamData }); // Broadcast to all slaves
+    }
   });
 
-  // Handle disconnect
+  socket.on("stopScreen", ({ code }) => {
+    if (rooms[code]) {
+      rooms[code].screenStream = null; // Clear the active screen stream
+      io.to(code).emit("stopScreen"); // Notify all slaves
+    }
+  });
+
   socket.on("disconnect", () => {
     Object.keys(rooms).forEach((code) => {
-      // Remove disconnected user from the room
-      rooms[code].slaves = rooms[code].slaves.filter((id) => id !== socket.id);
-
-      // If master disconnects, delete the room
-      if (rooms[code].master === socket.id) {
-        delete rooms[code];
+      const room = rooms[code];
+      if (room.master === socket.id) {
+        delete rooms[code]; // Delete the room if the master disconnects
+        io.to(code).emit("roomClosed", { message: "The room has been closed." });
       } else {
-        io.to(code).emit("updateSlaveCount", rooms[code].slaves.length);
+        room.slaves = room.slaves.filter((id) => id !== socket.id);
+        io.to(room.master).emit("updateSlaveCount", room.slaves.length);
       }
     });
     console.log("User disconnected:", socket.id);
