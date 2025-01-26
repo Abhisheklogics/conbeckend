@@ -72,13 +72,15 @@ io.on("connection", (socket) => {
   });
 
   // Master stops screen sharing
-  socket.on("stopScreen", ({ code }) => {
-    const room = rooms[code];
-    if (room && room.master === socket.id) {
-      io.to(code).emit("stopScreen");
-      console.log(`Screen sharing stopped in room: ${code}`);
-    }
-  });
+// Master stops screen sharing
+socket.on("stopScreen", ({ code }) => {
+  const room = rooms[code];
+  if (room && room.master === socket.id) {
+    io.to(code).emit("stopScreen");
+    console.log(`Screen sharing stopped in room: ${code}`);
+  }
+});
+
 
   // Handle user disconnection
   socket.on("disconnect", () => {
