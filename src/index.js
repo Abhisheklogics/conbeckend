@@ -12,8 +12,8 @@ app.use(cors({ origin: ["https://conexus-6asm.vercel.app"], credentials: true })
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-const activeScreenSharers = {}; // Track active master screen sharers
-const rooms = {}; // Track users in rooms
+const activeScreenSharers = {}; // Tracks the master screen sharers for each room
+const rooms = {}; // Tracks users in rooms
 
 io.on("connection", (socket) => {
   socket.on("join-room", ({ roomId, peerId, email }) => {
@@ -21,14 +21,16 @@ io.on("connection", (socket) => {
     rooms[roomId].push({ socketId: socket.id, peerId, email });
     socket.join(roomId);
 
+    // Notify others in the room about the new connection
+    socket.to(roomId).emit("user-connected", { peerId });
+    socket.roomId = roomId;
+    socket.peerId = peerId;
+
+    // If there's no master screen sharer, set the first user as the master
     if (!activeScreenSharers[roomId]) {
       activeScreenSharers[roomId] = peerId;
       io.to(roomId).emit("master-screen-sharing", { peerId });
     }
-
-    socket.to(roomId).emit("user-connected", { peerId });
-    socket.roomId = roomId;
-    socket.peerId = peerId;
   });
 
   socket.on("screen-share-started", ({ roomId, peerId }) => {
@@ -36,7 +38,7 @@ io.on("connection", (socket) => {
       activeScreenSharers[roomId] = peerId;
       io.to(roomId).emit("master-screen-sharing", { peerId });
     } else {
-      socket.emit("error-message", { message: "Screen sharing is already active!" });
+      socket.emit("error-message", { message: "Another user is already sharing their screen!" });
     }
   });
 
@@ -52,6 +54,13 @@ io.on("connection", (socket) => {
     if (activeScreenSharers[roomId] === peerId) delete activeScreenSharers[roomId];
     socket.leave(roomId);
     socket.to(roomId).emit("user-disconnected", { peerId });
+
+    // Assign a new master screen sharer if necessary
+    if (!activeScreenSharers[roomId] && rooms[roomId]?.length > 0) {
+      const newMaster = rooms[roomId][0]?.peerId;
+      activeScreenSharers[roomId] = newMaster;
+      io.to(roomId).emit("master-screen-sharing", { peerId: newMaster });
+    }
   });
 
   socket.on("disconnect", () => {
@@ -60,6 +69,13 @@ io.on("connection", (socket) => {
       rooms[roomId] = rooms[roomId]?.filter((user) => user.peerId !== peerId);
       if (activeScreenSharers[roomId] === peerId) delete activeScreenSharers[roomId];
       socket.to(roomId).emit("user-disconnected", { peerId });
+
+      // Assign a new master screen sharer if necessary
+      if (!activeScreenSharers[roomId] && rooms[roomId]?.length > 0) {
+        const newMaster = rooms[roomId][0]?.peerId;
+        activeScreenSharers[roomId] = newMaster;
+        io.to(roomId).emit("master-screen-sharing", { peerId: newMaster });
+      }
     }
   });
 });
