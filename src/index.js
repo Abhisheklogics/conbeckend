@@ -47,11 +47,11 @@ io.on("connection", (socket) => {
 
   // Handle screen sharing start
   socket.on("screen-share-started", ({ roomId, peerId }) => {
-    if (!activeScreenSharers[roomId]) {
-      activeScreenSharers[roomId] = peerId;
-      io.to(roomId).emit("master-screen-sharing", { peerId });
+    // Only the master can share their screen
+    if (activeScreenSharers[roomId] === peerId) {
+      io.to(roomId).emit("screen-share-started", { peerId });
     } else {
-      socket.emit("error-message", { message: "Another user is already sharing their screen!" });
+      socket.emit("error-message", { message: "Only the master can share their screen!" });
     }
   });
 
@@ -59,7 +59,7 @@ io.on("connection", (socket) => {
   socket.on("screen-share-stopped", ({ roomId, peerId }) => {
     if (activeScreenSharers[roomId] === peerId) {
       delete activeScreenSharers[roomId];
-      io.to(roomId).emit("master-screen-sharing", { peerId: null });
+      io.to(roomId).emit("screen-share-stopped", { peerId: null });
     }
   });
 
@@ -73,7 +73,7 @@ io.on("connection", (socket) => {
     // Remove active screen sharer if the user was sharing
     if (activeScreenSharers[roomId] === peerId) {
       delete activeScreenSharers[roomId];
-      io.to(roomId).emit("master-screen-sharing", { peerId: null });
+      io.to(roomId).emit("screen-share-stopped", { peerId: null });
     }
 
     socket.leave(roomId);
@@ -99,7 +99,7 @@ io.on("connection", (socket) => {
       // Remove active screen sharer if the user was sharing
       if (activeScreenSharers[roomId] === peerId) {
         delete activeScreenSharers[roomId];
-        io.to(roomId).emit("master-screen-sharing", { peerId: null });
+        io.to(roomId).emit("screen-share-stopped", { peerId: null });
       }
 
       socket.to(roomId).emit("user-disconnected", { peerId });
