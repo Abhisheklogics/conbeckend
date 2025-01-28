@@ -27,8 +27,16 @@ io.on("connection", (socket) => {
 
     console.log(`User joined: Room ${roomId}, Peer ID: ${peerId}, Email: ${email}`);
 
-    // Notify room about the new user
-    socket.to(roomId).emit("user-connected", { peerId });
+    // Notify the new user about the current master
+    if (activeScreenSharers[roomId]) {
+      const masterPeerId = activeScreenSharers[roomId];
+      socket.emit("master-connected", { masterPeerId });
+    }
+
+    // Notify the room about the new user (except the master)
+    if (peerId !== activeScreenSharers[roomId]) {
+      socket.to(roomId).emit("user-connected", { peerId });
+    }
 
     // Assign master screen sharer if no one is sharing
     if (!activeScreenSharers[roomId]) {
