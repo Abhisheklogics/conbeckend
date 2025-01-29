@@ -8,7 +8,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-    origin: ['https://conexus-6asm.vercel.app/'],
+    origin: ['https://conexus-meet.vercel.app/'],
     methods: ['GET', 'POST'],
     credentials: true,
 }));
