@@ -1,58 +1,82 @@
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-import cors from "cors";
-import dotenv from "dotenv";
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import dotenv from 'dotenv';
+import cors from 'cors';
 
 dotenv.config();
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: true
-});
+
 app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ["GET", "POST"],
-}))
+    origin: ['https://conexus-6asm.vercel.app/'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+}));
 
+const server = createServer(app);
+const io = new Server(server, { cors: true });
 
+const rooms = {}; 
+const activeScreenSharers = {}; 
 
+io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
 
+    socket.on('create-room', ({ email }, callback) => {
+        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        rooms[roomId] = [{ socketId: socket.id, email }];
+        callback({ success: true, roomId });
+        console.log(`Room ${roomId} created by ${email}`);
+    });
 
+    socket.on('join-room', ({ roomId, peerId, email }) => {
+        if (!rooms[roomId]) rooms[roomId] = [];
+        rooms[roomId].push({ socketId: socket.id, peerId, email });
 
+        socket.join(roomId);
+        socket.to(roomId).emit('user-connected', { peerId, email });
 
-const emailToSocketIdMap = new Map();
-const socketidToEmailMap = new Map();
+        const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
+        socket.emit('receive-existing-users', { existingUsers });
 
-io.on("connection", (socket) => {
-  console.log(`Socket Connected`, socket.id);
-  socket.on("room:join", (data) => {
-    const { email, room } = data;
-    emailToSocketIdMap.set(email, socket.id);
-    socketidToEmailMap.set(socket.id, email);
-    io.to(room).emit("user:joined", { email, id: socket.id });
-    socket.join(room);
-    io.to(socket.id).emit("room:join", data);
-  });
+        socket.roomId = roomId;
+        socket.peerId = peerId;
+        socket.email = email;
 
-  socket.on("user:call", ({ to, offer }) => {
-    io.to(to).emit("incomming:call", { from: socket.id, offer });
-  });
+        console.log(`${email} joined room ${roomId}`);
+    });
 
-  socket.on("call:accepted", ({ to, ans }) => {
-    io.to(to).emit("call:accepted", { from: socket.id, ans });
-  });
+    socket.on('screen-share-started', ({ roomId, peerId }) => {
+        if (!activeScreenSharers[roomId]) {
+            activeScreenSharers[roomId] = peerId;
+            io.to(roomId).emit('screen-share-update', { peerId, isSharing: true });
+            console.log(`Screen sharing started by ${peerId} in room ${roomId}`);
+        } else {
+            socket.emit('error-message', { message: 'Screen sharing is already active!' });
+        }
+    });
 
-  socket.on("peer:nego:needed", ({ to, offer }) => {
-    console.log("peer:nego:needed", offer);
-    io.to(to).emit("peer:nego:needed", { from: socket.id, offer });
-  });
+    socket.on('screen-share-stopped', ({ roomId, peerId }) => {
+        if (activeScreenSharers[roomId] === peerId) {
+            delete activeScreenSharers[roomId];
+            io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
+            console.log(`Screen sharing stopped by ${peerId} in room ${roomId}`);
+        }
+    });
 
-  socket.on("peer:nego:done", ({ to, ans }) => {
-    console.log("peer:nego:done", ans);
-    io.to(to).emit("peer:nego:final", { from: socket.id, ans });
-  });
+    socket.on('leave-room', ({ roomId, peerId }) => {
+        if (rooms[roomId]) {
+            rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
+            socket.leave(roomId);
+            socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+    });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(process.env.PORT, () => {
+    console.log(`Server is running on port ${process.env.PORT}`);
+});
