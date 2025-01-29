@@ -2,67 +2,57 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:5173",  // React client origin
-    methods: ["GET", "POST"],
-  },
+  cors: true
 });
+app.use(cors({
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST"],
+}))
 
-const rooms = {};
 
-app.use(cors());
+
+
+
+
+
+const emailToSocketIdMap = new Map();
+const socketidToEmailMap = new Map();
 
 io.on("connection", (socket) => {
-  console.log("User connected: " + socket.id);
-
-  // Handle user joining the room
-  socket.on("join room", (roomID) => {
-    if (rooms[roomID]) {
-      rooms[roomID].push(socket.id);
-    } else {
-      rooms[roomID] = [socket.id];
-    }
-
-    const otherUser = rooms[roomID].find((id) => id !== socket.id);
-    if (otherUser) {
-      socket.emit("other user", otherUser);
-      socket.to(otherUser).emit("user joined", socket.id);
-    }
+  console.log(`Socket Connected`, socket.id);
+  socket.on("room:join", (data) => {
+    const { email, room } = data;
+    emailToSocketIdMap.set(email, socket.id);
+    socketidToEmailMap.set(socket.id, email);
+    io.to(room).emit("user:joined", { email, id: socket.id });
+    socket.join(room);
+    io.to(socket.id).emit("room:join", data);
   });
 
-  // Handle screen share broadcast
-  socket.on("start-screen-share", (data) => {
-    const { roomID, peerId, stream } = data;
-    socket.to(roomID).emit("screen-share", { peerId, stream }); // Broadcast screen stream to others
+  socket.on("user:call", ({ to, offer }) => {
+    io.to(to).emit("incomming:call", { from: socket.id, offer });
   });
 
-  // Handle the offer, answer, and ICE candidates for WebRTC
-  socket.on("offer", (payload) => {
-    io.to(payload.target).emit("offer", payload);
+  socket.on("call:accepted", ({ to, ans }) => {
+    io.to(to).emit("call:accepted", { from: socket.id, ans });
   });
 
-  socket.on("answer", (payload) => {
-    io.to(payload.target).emit("answer", payload);
+  socket.on("peer:nego:needed", ({ to, offer }) => {
+    console.log("peer:nego:needed", offer);
+    io.to(to).emit("peer:nego:needed", { from: socket.id, offer });
   });
 
-  socket.on("ice-candidate", (incoming) => {
-    io.to(incoming.target).emit("ice-candidate", incoming.candidate);
-  });
-
-  // Handle disconnection
-  socket.on("disconnect", () => {
-    for (let roomID in rooms) {
-      rooms[roomID] = rooms[roomID].filter((id) => id !== socket.id);
-      io.to(roomID).emit("current-users", rooms[roomID]);
-    }
-    console.log("User disconnected: " + socket.id);
+  socket.on("peer:nego:done", ({ to, ans }) => {
+    console.log("peer:nego:done", ans);
+    io.to(to).emit("peer:nego:final", { from: socket.id, ans });
   });
 });
 
-server.listen(8000, () => {
-  console.log("Server is running on port 8000");
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
