@@ -1,3 +1,4 @@
+// ---------------------- SERVER SIDE (Express + Socket.io) ----------------------
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -38,11 +39,9 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.to(roomId).emit('user-connected', { peerId, email });
 
-        // Send existing users in the room to the new user
         const existingUsers = rooms[roomId].filter((user) => user.socketId !== socket.id);
         socket.emit('receive-existing-users', { existingUsers });
 
-        // Store room and user details
         socket.roomId = roomId;
         socket.peerId = peerId;
         socket.email = email;
@@ -70,26 +69,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle user leaving room
-    socket.on('leave-room', ({ roomId, peerId }) => {
-        if (rooms[roomId]) {
-            rooms[roomId] = rooms[roomId].filter(user => user.peerId !== peerId);
-            socket.leave(roomId);
-            socket.to(roomId).emit('user-disconnected', { peerId, email: socket.email });
-
-            // If the screen sharer leaves, stop screen sharing for all
-            if (activeScreenSharers[roomId] === peerId) {
-                delete activeScreenSharers[roomId];
-                io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
-            }
-        }
-    });
-
-    // Handle user disconnect
+    // Handle disconnect
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-
-        // Handle user leaving room on disconnect
+        
         for (let roomId in rooms) {
             const roomUsers = rooms[roomId];
             const userIndex = roomUsers.findIndex(user => user.socketId === socket.id);
@@ -97,8 +80,7 @@ io.on('connection', (socket) => {
                 const { peerId, email } = roomUsers[userIndex];
                 rooms[roomId].splice(userIndex, 1);
                 socket.to(roomId).emit('user-disconnected', { peerId, email });
-
-                // If the screen sharer disconnects, stop screen sharing
+                
                 if (activeScreenSharers[roomId] === peerId) {
                     delete activeScreenSharers[roomId];
                     io.to(roomId).emit('screen-share-update', { peerId, isSharing: false });
@@ -107,11 +89,8 @@ io.on('connection', (socket) => {
             }
         }
     });
-
 });
-    
 
 server.listen(process.env.PORT, () => {
     console.log(`Server is running on port ${process.env.PORT}`);
 });
-
