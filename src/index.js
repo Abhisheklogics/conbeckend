@@ -22,15 +22,20 @@ let activeScreenSharers = {}; // Track active screen sharers
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('join-room', ({ roomId, peerId, email }) => {
+    socket.on('join-room', ({ roomId, peerId, name }) => {
         if (!rooms[roomId]) rooms[roomId] = [];
-        rooms[roomId].push({ socketId: socket.id, peerId, email });
+        rooms[roomId].push({ socketId: socket.id, peerId, name });
 
         socket.join(roomId);
         io.to(roomId).emit('user-list', rooms[roomId]); // Send updated user list
         io.to(roomId).emit('user-connected', { peerId });
 
-        console.log(`${email} joined room ${roomId}`);
+        // Send current screen sharer info if available
+        if (activeScreenSharers[roomId]) {
+            socket.emit('screen-share-update', { peerId: activeScreenSharers[roomId], isSharing: true });
+        }
+
+        console.log(`${name} joined room ${roomId}`);
     });
 
     socket.on('screen-share-started', ({ roomId, peerId }) => {
@@ -52,11 +57,17 @@ io.on('connection', (socket) => {
         console.log('User disconnected:', socket.id);
         for (let roomId in rooms) {
             rooms[roomId] = rooms[roomId].filter(user => user.socketId !== socket.id);
-            io.to(roomId).emit('user-list', rooms[roomId]); 
+            io.to(roomId).emit('user-list', rooms[roomId]);
+
+            // If disconnected user was sharing screen, stop it
+            if (activeScreenSharers[roomId] && activeScreenSharers[roomId] === socket.id) {
+                delete activeScreenSharers[roomId];
+                io.to(roomId).emit('screen-share-update', { peerId: socket.id, isSharing: false });
+            }
         }
     });
 });
 
-server.listen(process.env.PORT, () => {
-    console.log(`Server running on port ${process.env.PORT}`);
+server.listen(process.env.PORT || 5000, () => {
+    console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
