@@ -8,52 +8,36 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-    origin: ['https://conexus-meet.vercel.app'],
+    origin: ['https://conexus-meet.vercel.app/'], // Adjust frontend URL if needed
     methods: ['GET', 'POST'],
     credentials: true,
 }));
 
 const server = createServer(app);
-const io = new Server(server, { cors: { origin:true} });
+const io = new Server(server, { cors: { origin: true } });
 
 let rooms = {};
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log('✅ New connection:', socket.id);
 
-    socket.on('join-room', ({ roomId, Name }) => {
-        if (!roomId || !Name) {
-            console.log("Error: roomId or Name is undefined");
-            return;
-        }
+    socket.on('join-room', (roomId, userId) => {
+        console.log(`🔗 User ${userId} joining room: ${roomId}`);
 
-        console.log(`User ${Name} joining room: ${roomId}`);
-
-        // Room create if not exists
-        if (!rooms[roomId]) {
-            rooms[roomId] = [];
-        }
-
-        // Add user to room if not already added
-        if (!rooms[roomId].some(user => user.id === socket.id)) {
-            rooms[roomId].push({ id: socket.id, Name });
-        }
+        if (!rooms[roomId]) rooms[roomId] = [];
+        rooms[roomId].push(userId);
 
         socket.join(roomId);
-        console.log(`User ${Name} joined room: ${roomId}`);
-        
-        io.to(roomId).emit('update-user-list', rooms[roomId]);
-    });
+        socket.to(roomId).emit('user-connected', userId);
 
-    socket.on('disconnect', () => {
-        for (let roomId in rooms) {
-            rooms[roomId] = rooms[roomId].filter(user => user.id !== socket.id);
-            io.to(roomId).emit('update-user-list', rooms[roomId]);
-        }
-        console.log('User disconnected:', socket.id);
+        socket.on('disconnect', () => {
+            console.log(`❌ User disconnected: ${userId}`);
+            rooms[roomId] = rooms[roomId].filter(user => user !== userId);
+            socket.to(roomId).emit('user-disconnected', userId);
+        });
     });
 });
 
 server.listen(process.env.PORT || 4000, () => {
-    console.log(`Server is running on port ${process.env.PORT || 4000}`);
+    console.log(`🚀 Server running on port ${process.env.PORT || 4000}`);
 });
