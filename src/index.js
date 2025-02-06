@@ -28,7 +28,11 @@ io.on('connection', (socket) => {
         rooms[roomId].push({ userId, socketId: socket.id });
 
         socket.join(roomId);
-        io.to(roomId).emit('user-connected', { userId, socketId: socket.id, users: rooms[roomId] });
+        // Send the list of existing users to the newly joined user
+        socket.emit('existing-users', rooms[roomId]);
+
+        // Notify others in the room about the new user
+        socket.to(roomId).emit('user-connected', { userId, socketId: socket.id });
     });
 
     socket.on('offer', (payload) => {
@@ -43,8 +47,8 @@ io.on('connection', (socket) => {
         io.to(payload.target).emit('ice-candidate', payload);
     });
 
-    socket.on('screen-share', ({ roomId, userId, streamId }) => {
-        io.to(roomId).emit('screen-share-started', { userId, streamId });
+    socket.on('screen-share', ({ roomId, userId }) => {
+        io.to(roomId).emit('screen-share-started', { userId });
     });
 
     socket.on('stop-screen-share', ({ roomId, userId }) => {
