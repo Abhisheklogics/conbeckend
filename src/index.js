@@ -14,7 +14,7 @@ app.use(cors({
 }));
 
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, { cors: { origin:true} });
 
 let rooms = {};
 
