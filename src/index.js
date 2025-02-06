@@ -8,42 +8,42 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-    origin: ['https://conexus-meet.vercel.app/'],
+    origin: ['https://conexus-meet.vercel.app'],
     methods: ['GET', 'POST'],
     credentials: true,
 }));
 
 const server = createServer(app);
-const io = new Server(server, { cors: true });
+const io = new Server(server, { cors: { origin: '*' } });
 
-let rooms = {}; 
+let rooms = {};
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     socket.on('join-room', ({ roomId, Name }) => {
-        console.log(`User ${Name} joining room: ${roomId}`);
-        
-        if (!roomId) {
-            console.log("Error: roomId is undefined");
+        if (!roomId || !Name) {
+            console.log("Error: roomId or Name is undefined");
             return;
         }
-    
+
+        console.log(`User ${Name} joining room: ${roomId}`);
+
+        // Room create if not exists
         if (!rooms[roomId]) {
             rooms[roomId] = [];
         }
-    
-        const existingUser = rooms[roomId].find(user => user.id === socket.id);
-        if (!existingUser) {
+
+        // Add user to room if not already added
+        if (!rooms[roomId].some(user => user.id === socket.id)) {
             rooms[roomId].push({ id: socket.id, Name });
         }
-    
-        socket.join(roomId);  // Ensure socket joins the correct room
+
+        socket.join(roomId);
         console.log(`User ${Name} joined room: ${roomId}`);
         
         io.to(roomId).emit('update-user-list', rooms[roomId]);
     });
-        
-
 
     socket.on('disconnect', () => {
         for (let roomId in rooms) {
