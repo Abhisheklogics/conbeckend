@@ -21,20 +21,41 @@ let rooms = {};
 io.on('connection', (socket) => {
     console.log('✅ New connection:', socket.id);
 
-    socket.on('join-room', (roomId, userId) => {
+    socket.on('join-room', ({ roomId, userId }) => {
         console.log(`🔗 User ${userId} joining room: ${roomId}`);
 
         if (!rooms[roomId]) rooms[roomId] = [];
-        rooms[roomId].push(userId);
+        rooms[roomId].push({ userId, socketId: socket.id });
 
         socket.join(roomId);
-        socket.to(roomId).emit('user-connected', userId);
+        io.to(roomId).emit('user-connected', { userId, socketId: socket.id, users: rooms[roomId] });
+    });
 
-        socket.on('disconnect', () => {
-            console.log(`❌ User disconnected: ${userId}`);
-            rooms[roomId] = rooms[roomId].filter(user => user !== userId);
-            socket.to(roomId).emit('user-disconnected', userId);
-        });
+    socket.on('offer', (payload) => {
+        io.to(payload.target).emit('offer', payload);
+    });
+
+    socket.on('answer', (payload) => {
+        io.to(payload.target).emit('answer', payload);
+    });
+
+    socket.on('ice-candidate', (payload) => {
+        io.to(payload.target).emit('ice-candidate', payload);
+    });
+
+    socket.on('screen-share', ({ roomId, userId, streamId }) => {
+        io.to(roomId).emit('screen-share-started', { userId, streamId });
+    });
+
+    socket.on('stop-screen-share', ({ roomId, userId }) => {
+        io.to(roomId).emit('screen-share-stopped', { userId });
+    });
+
+    socket.on('disconnect', () => {
+        for (const roomId in rooms) {
+            rooms[roomId] = rooms[roomId].filter((user) => user.socketId !== socket.id);
+            io.to(roomId).emit('user-disconnected', socket.id);
+        }
     });
 });
 
