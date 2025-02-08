@@ -31,7 +31,7 @@ io.on('connection', (socket) => {
         // Send the list of existing users to the newly joined user
         socket.emit('existing-users', rooms[roomId]);
 
-        // Notify others in the room about the new user
+        
         socket.to(roomId).emit('user-connected', { userId, socketId: socket.id });
     });
 
