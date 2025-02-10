@@ -9,7 +9,7 @@ const app = express();
 
 app.use(cors({
         origin: ['https://conexus-meet.vercel.app/'],
-              methods: ['GET', 'POST']
+        methods: ['GET', 'POST']
 }));
 
 const server = createServer(app);
@@ -24,15 +24,18 @@ io.on('connection', (socket) => {
         if (!rooms[roomId]) {
             rooms[roomId] = { users: [], screenSharer: null };
         }
-        rooms[roomId].users.push({ userId, name, socketId: socket.id });
+        // Prevent duplicate names
+        if (!rooms[roomId].users.some(user => user.userId === userId)) {
+            rooms[roomId].users.push({ userId, name, socketId: socket.id });
+        }
         socket.join(roomId);
         io.to(roomId).emit('user-list', rooms[roomId].users);
     });
 
-    socket.on('screen-share', ({ roomId, userId, stream }) => {
-        if (rooms[roomId]) {
+    socket.on('screen-share', ({ roomId, userId }) => {
+        if (rooms[roomId] && !rooms[roomId].screenSharer) {
             rooms[roomId].screenSharer = userId;
-            io.to(roomId).emit('screen-share-started', { userId, stream });
+            io.to(roomId).emit('screen-share-started', { userId });
         }
     });
 
