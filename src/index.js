@@ -24,12 +24,15 @@ io.on('connection', (socket) => {
         if (!rooms[roomId]) {
             rooms[roomId] = { users: [], screenSharer: null };
         }
-        // Prevent duplicate names
         if (!rooms[roomId].users.some(user => user.userId === userId)) {
             rooms[roomId].users.push({ userId, name, socketId: socket.id });
         }
         socket.join(roomId);
         io.to(roomId).emit('user-list', rooms[roomId].users);
+
+        if (rooms[roomId].screenSharer) {
+            io.to(socket.id).emit('screen-share-started', { userId: rooms[roomId].screenSharer });
+        }
     });
 
     socket.on('screen-share', ({ roomId, userId }) => {
