@@ -6,19 +6,14 @@ import cors from 'cors';
 
 dotenv.config();
 const app = express();
-
-app.use(cors({
-    origin: ['https://conexus-meet.vercel.app/'],
-    methods: ['GET', 'POST']
-}));
-
+app.use(cors({ origin: ['https://conexus-meet.vercel.app/'], methods: ['GET', 'POST'] }));
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: true } });
 
-let rooms = {}; // Store users and screen sharer info
+let rooms = {}; // Room data store
 
 io.on('connection', (socket) => {
-    console.log('✅ New connection:', socket.id);
+    console.log('✅ New user connected:', socket.id);
 
     socket.on('join-room', ({ roomId, userId, name }) => {
         if (!rooms[roomId]) {
@@ -28,7 +23,7 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         io.to(roomId).emit('user-list', Object.values(rooms[roomId].users));
 
-        // If a screen is already being shared, notify new user
+        // Agar koi screen share kar raha hai to naya user uska stream le sake
         if (rooms[roomId].screenSharer) {
             io.to(socket.id).emit('screen-share-started', { userId: rooms[roomId].screenSharer });
         }
@@ -39,10 +34,10 @@ io.on('connection', (socket) => {
             rooms[roomId].screenSharer = userId;
             io.to(roomId).emit('screen-share-started', { userId });
 
-            // Notify all users to connect with the screen sharer
+            // Notify all users to receive the screen stream
             Object.values(rooms[roomId].users).forEach(user => {
                 if (userId !== user.socketId) {
-                    io.to(user.socketId).emit('connect-screen-share', { screenSharer: userId });
+                    io.to(user.socketId).emit('receive-screen-stream', { screenSharer: userId });
                 }
             });
         }
