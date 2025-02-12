@@ -23,7 +23,6 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         io.to(roomId).emit('user-list', Object.values(rooms[roomId].users));
 
-        // Agar koi screen share kar raha hai to naya user uska stream le sake
         if (rooms[roomId].screenSharer) {
             io.to(socket.id).emit('screen-share-started', { userId: rooms[roomId].screenSharer });
         }
@@ -33,14 +32,11 @@ io.on('connection', (socket) => {
         if (rooms[roomId] && !rooms[roomId].screenSharer) {
             rooms[roomId].screenSharer = userId;
             io.to(roomId).emit('screen-share-started', { userId });
-
-            // Notify all users to receive the screen stream
-            Object.values(rooms[roomId].users).forEach(user => {
-                if (userId !== user.socketId) {
-                    io.to(user.socketId).emit('receive-screen-stream', { screenSharer: userId });
-                }
-            });
         }
+    });
+
+    socket.on('broadcast-screen-stream', ({ roomId, userId }) => {
+        io.to(roomId).emit('receive-screen-stream', { screenSharer: userId });
     });
 
     socket.on('stop-screen-share', ({ roomId, userId }) => {
@@ -59,12 +55,10 @@ io.on('connection', (socket) => {
 
             if (userId) {
                 delete rooms[roomId].users[userId];
-
                 if (rooms[roomId].screenSharer === userId) {
                     io.to(roomId).emit('screen-share-stopped');
                     rooms[roomId].screenSharer = null;
                 }
-
                 io.to(roomId).emit('user-list', Object.values(rooms[roomId].users));
             }
         }
