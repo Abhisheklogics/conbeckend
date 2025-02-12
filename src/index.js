@@ -35,19 +35,32 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('screen-share', ({ roomId, userId }) => {
-        if (rooms[roomId] && !rooms[roomId].screenSharer) {
-            rooms[roomId].screenSharer = userId;
-            io.to(roomId).emit('screen-share-started', { userId });
-        }
-    });
+  socket.on('screen-share', ({ roomId, userId }) => {
+    if (rooms[roomId] && !rooms[roomId].screenSharer) {
+        rooms[roomId].screenSharer = userId;
+        io.to(roomId).emit('screen-share-started', { userId });
 
-    socket.on('stop-screen-share', ({ roomId, userId }) => {
-        if (rooms[roomId] && rooms[roomId].screenSharer === userId) {
-            rooms[roomId].screenSharer = null;
-            io.to(roomId).emit('screen-share-stopped', { userId });
-        }
-    });
+        // Inform all users to connect to the screen sharer
+        rooms[roomId].users.forEach(user => {
+            if (user.userId !== userId) {
+                io.to(user.socketId).emit('connect-screen-share', { screenSharer: userId });
+            }
+        });
+    }
+});
+
+socket.on('stop-screen-share', ({ roomId, userId }) => {
+    if (rooms[roomId] && rooms[roomId].screenSharer === userId) {
+        rooms[roomId].screenSharer = null;
+        io.to(roomId).emit('screen-share-stopped');
+
+        // Inform all users to disconnect screen share
+        rooms[roomId].users.forEach(user => {
+            io.to(user.socketId).emit('disconnect-screen-share');
+        });
+    }
+});
+
 
     socket.on('disconnect', () => {
         for (const roomId in rooms) {
