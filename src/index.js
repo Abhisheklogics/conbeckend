@@ -20,41 +20,45 @@ const io = new Server(server, {
     }
 });
 
-
 // ✅ PeerJS Server Setup
 const peerServer = ExpressPeerServer(server, { debug: true, path: "/" });
 app.use("/peerjs", peerServer);
 
 let screenSharer = null;
-let viewers = new Set();
+let users = {}; // Store user info
 
 io.on("connection", (socket) => {
-  console.log("✅ User Connected:", socket.id);
+    console.log("✅ User Connected:", socket.id);
 
-  socket.on("start-screen-share", ({ peerId }) => {
-    if (screenSharer) {
-      io.to(socket.id).emit("screen-share-error", "Another user is already sharing.");
-      return;
-    }
-    screenSharer = peerId;
-    io.emit("screen-share-started", { peerId });
-    console.log("📡 Screen Sharing Started:", peerId);
-  });
+    socket.on("register", ({ peerId }) => {
+        users[socket.id] = peerId;
+    });
 
-  socket.on("stop-screen-share", () => {
-    if (screenSharer) {
-      io.emit("screen-share-stopped");
-      console.log("❌ Screen Sharing Stopped");
-      screenSharer = null;
-    }
-  });
+    socket.on("start-screen-share", ({ peerId }) => {
+        if (screenSharer) {
+            io.to(socket.id).emit("screen-share-error", "Another user is already sharing.");
+            return;
+        }
+        screenSharer = peerId;
+        io.emit("screen-share-started", { peerId });
+        console.log("📡 Screen Sharing Started:", peerId);
+    });
 
-  socket.on("disconnect", () => {
-    if (screenSharer === socket.id) {
-      io.emit("screen-share-stopped");
-      screenSharer = null;
-    }
-  });
+    socket.on("stop-screen-share", () => {
+        if (screenSharer) {
+            io.emit("screen-share-stopped");
+            console.log("❌ Screen Sharing Stopped");
+            screenSharer = null;
+        }
+    });
+
+    socket.on("disconnect", () => {
+        if (users[socket.id] === screenSharer) {
+            io.emit("screen-share-stopped");
+            screenSharer = null;
+        }
+        delete users[socket.id];
+    });
 });
 
 const PORT = process.env.PORT || 5000;
