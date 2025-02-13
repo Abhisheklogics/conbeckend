@@ -1,68 +1,76 @@
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import dotenv from 'dotenv';
-import cors from 'cors';
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { ExpressPeerServer } from "peer";
+import dotenv from "dotenv";
+import cors from "cors";
 
 dotenv.config();
 const app = express();
-
-app.use(cors({
-    origin: ['https://conexus-meet.vercel.app/'],
-    methods: ['GET', 'POST'],
-    credentials: true,
-}));
-
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: true } });
+const io = new Server(server, { cors: { origin: "*" } });
 
-let rooms = {};
+app.use(cors({ origin: ["https://conexus-meet.vercel.app"] }));
 
-io.on('connection', (socket) => {
-    console.log('✅ New connection:', socket.id);
+// ✅ Setup PeerJS Server on `/peerjs`
+const peerServer = ExpressPeerServer(server, {
+  path: "/peerjs",
+  debug: true,
+});
 
-    socket.on('join-room', ({ roomId, userId }) => {
-        console.log(`🔗 User ${userId} joining room: ${roomId}`);
+app.use("/peerjs", peerServer);
 
-        if (!rooms[roomId]) rooms[roomId] = [];
-        rooms[roomId].push({ userId, socketId: socket.id });
+let rooms = {}; // Store active rooms
 
-        socket.join(roomId);
-        // Send the list of existing users to the newly joined user
-        socket.emit('existing-users', rooms[roomId]);
+io.on("connection", (socket) => {
+  console.log("✅ New user connected:", socket.id);
 
-        
-        socket.to(roomId).emit('user-connected', { userId, socketId: socket.id });
-    });
+  socket.on("join-room", ({ roomId, userId, name }) => {
+    if (!rooms[roomId]) {
+      rooms[roomId] = { users: {}, screenSharer: null };
+    }
+    rooms[roomId].users[userId] = { name, socketId: socket.id };
+    socket.join(roomId);
+    io.to(roomId).emit("user-list", Object.values(rooms[roomId].users));
 
-    socket.on('offer', (payload) => {
-        io.to(payload.target).emit('offer', payload);
-    });
+    if (rooms[roomId].screenSharer) {
+      io.to(socket.id).emit("screen-share-started", { userId: rooms[roomId].screenSharer });
+    }
+  });
 
-    socket.on('answer', (payload) => {
-        io.to(payload.target).emit('answer', payload);
-    });
+  socket.on("screen-share", ({ roomId, userId }) => {
+    if (rooms[roomId] && !rooms[roomId].screenSharer) {
+      rooms[roomId].screenSharer = userId;
+      io.to(roomId).emit("screen-share-started", { userId });
+    }
+  });
 
-    socket.on('ice-candidate', (payload) => {
-        io.to(payload.target).emit('ice-candidate', payload);
-    });
+  socket.on("stop-screen-share", ({ roomId, userId }) => {
+    if (rooms[roomId]?.screenSharer === userId) {
+      rooms[roomId].screenSharer = null;
+      io.to(roomId).emit("screen-share-stopped");
+    }
+  });
 
-    socket.on('screen-share', ({ roomId, userId }) => {
-        io.to(roomId).emit('screen-share-started', { userId });
-    });
+  socket.on("disconnect", () => {
+    for (const roomId in rooms) {
+      let userId = null;
+      Object.entries(rooms[roomId].users).forEach(([id, user]) => {
+        if (user.socketId === socket.id) userId = id;
+      });
 
-    socket.on('stop-screen-share', ({ roomId, userId }) => {
-        io.to(roomId).emit('screen-share-stopped', { userId });
-    });
-
-    socket.on('disconnect', () => {
-        for (const roomId in rooms) {
-            rooms[roomId] = rooms[roomId].filter((user) => user.socketId !== socket.id);
-            io.to(roomId).emit('user-disconnected', socket.id);
+      if (userId) {
+        delete rooms[roomId].users[userId];
+        if (rooms[roomId].screenSharer === userId) {
+          io.to(roomId).emit("screen-share-stopped");
+          rooms[roomId].screenSharer = null;
         }
-    });
+        io.to(roomId).emit("user-list", Object.values(rooms[roomId].users));
+      }
+    }
+  });
 });
 
-server.listen(process.env.PORT || 4000, () => {
-    console.log(`🚀 Server running on port ${process.env.PORT || 4000}`);
-});
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+a
