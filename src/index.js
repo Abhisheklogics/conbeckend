@@ -1,65 +1,58 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { ExpressPeerServer } from "peer";
 import cors from "cors";
 import dotenv from "dotenv";
 
 dotenv.config();
 const app = express();
 const server = createServer(app);
+
 app.use(cors({
-    origin: ["https://conexus-meet.vercel.app"], // ✅ Frontend URL
+    origin: ["http://localhost:5173"],
     methods: ["GET", "POST"]
 }));
 
 const io = new Server(server, {
     cors: {
-        origin: ["https://conexus-meet.vercel.app"], // ✅ Frontend allowed only
+        origin: ["http://localhost:5173"],
         methods: ["GET", "POST"]
     }
 });
 
-// ✅ PeerJS Server Setup
-const peerServer = ExpressPeerServer(server, { debug: true, path: "/" });
-app.use("/peerjs", peerServer);
-
-let screenSharer = null;
-let users = {}; // Store user info
+const rooms = new Map(); // Store users in rooms
 
 io.on("connection", (socket) => {
-    console.log("✅ User Connected:", socket.id);
+    console.log("User connected:", socket.id);
 
-    socket.on("register", ({ peerId }) => {
-        users[socket.id] = peerId;
-    });
-
-    socket.on("start-screen-share", ({ peerId }) => {
-        if (screenSharer) {
-            io.to(socket.id).emit("screen-share-error", "Another user is already sharing.");
-            return;
+    socket.on("join-room", (roomId, userId) => {
+        if (!rooms.has(roomId)) {
+            rooms.set(roomId, new Set());
         }
-        screenSharer = peerId;
-        io.emit("screen-share-started", { peerId });
-        console.log("📡 Screen Sharing Started:", peerId);
-    });
+        rooms.get(roomId).add(userId);
 
-    socket.on("stop-screen-share", () => {
-        if (screenSharer) {
-            io.emit("screen-share-stopped");
-            console.log("❌ Screen Sharing Stopped");
-            screenSharer = null;
-        }
-    });
+        socket.join(roomId);
+        socket.to(roomId).emit("user-connected", userId);
 
-    socket.on("disconnect", () => {
-        if (users[socket.id] === screenSharer) {
-            io.emit("screen-share-stopped");
-            screenSharer = null;
-        }
-        delete users[socket.id];
+        socket.on("disconnect", () => {
+            rooms.get(roomId)?.delete(userId);
+            if (rooms.get(roomId)?.size === 0) {
+                rooms.delete(roomId); // Delete empty rooms
+            }
+            socket.to(roomId).emit("user-disconnected", userId);
+        });
     });
 });
 
-const PORT = process.env.PORT || 5000;
+// ✅ **API to check if a room exists**
+app.get("/check-room/:roomId", (req, res) => {
+    const { roomId } = req.params;
+    if (rooms.has(roomId)) {
+        res.json({ exists: true });
+    } else {
+        res.json({ exists: false });
+    }
+});
+
+const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
