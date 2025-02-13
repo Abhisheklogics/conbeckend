@@ -8,11 +8,14 @@ import cors from "cors";
 dotenv.config();
 const app = express();
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, { cors: { origin: true } });
 
-app.use(cors({ origin: ["https://conexus-meet.vercel.app"] }));
+app.use(cors({ 
+    origin: ["https://conexus-meet.vercel.app"] ,
+    methods: ["GET", "POST"]
+}));
 
-// ✅ Setup PeerJS Server on `/peerjs`
+
 const peerServer = ExpressPeerServer(server, {
   path: "/peerjs",
   debug: true,
@@ -20,7 +23,7 @@ const peerServer = ExpressPeerServer(server, {
 
 app.use("/peerjs", peerServer);
 
-let rooms = {}; // Store active rooms
+let rooms = {}; 
 
 io.on("connection", (socket) => {
   console.log("✅ New user connected:", socket.id);
